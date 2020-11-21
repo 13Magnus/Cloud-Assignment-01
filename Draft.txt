@@ -1,0 +1,45 @@
+hadoop fs -mkdir /user/aditya_vadagave2
+hadoop fs -put /home/aditya_vadagave2/fulldb.csv hdfs://cluster-8041-m/user/aditya_vadagave2/
+pig
+a = LOAD 'hdfs://cluster-8041-m/user/aditya_vadagave2/fulldb.csv' using PigStorage(',') AS (Index:int, Id:int, PostTypeId:int, AcceptedAnswerId:int, ParentId:int, CreationDate:datetime, DeletionDate:datetime, Score:int, ViewCount:int, OwnerUserId:int, OwnerDisplayName:chararray, LastEditorUserId:int, LastEditorDisplayName:chararray, LastEditDate:datetime, LastActivityDate:datetime, Title:chararray, Tags:chararray, AnswerCount:int, CommentCount:int, FavoriteCount:int, ClosedDate:datetime, CommunityOwnedDate:datetime, ContentLicense: chararray);
+b = FOREACH a GENERATE Id, Score, ViewCount, OwnerUserId, OwnerDisplayName, Title, Tags;
+STORE b INTO 'finale' using PigStorage(',');
+ctrl z
+hadoop fs -get  finale/part-m-00000 /home/aditya_vadagave2/
+mv /home/aditya_vadagave2/part-m-00000 /home/aditya_vadagave2/finale.csv
+hive
+create external table if not exists newtable (Id int, Score int, ViewCount int, OwnerUserId int, OwnerDisplayName string, Title string, Tags string) ROW FORMAT DELIMITED FIELDS TERMINATED BY ','; 
+load data local inpath '/home/aditya_vadagave2/finale.csv' overwrite into table newtable;
+
+1) select Title, Score from newtable order by Score desc limit 10;
+2) create table case_table as select ownerUserId as A, SUM(Score) as B from newtable group by ownerUserId;
+   select * from case_table order by B desc limit 10;
+   create table case_table_2 as select OwnerDisplayName as C, SUM(Score) as D from newtable group by ownerDisplayName;
+   select * from case_table_2 order by D desc limit 10;
+3) select COUNT(OwnerUserId) from newtable where Title like '%hadoop%' or Title like '%Hadoop%';
+
+create table tempo as select ownerUserId,Title,Score from newtable order by Score desc limit 10;
+ select * from tempo;
+create table tf_table as select ownerUserId, Title from tempo;
+
+
+
+
+
+
+
+create table tf_table as select ownerUserId, Title from newtable order by Score desc limit 10;
+
+ create view exploded as select id, word from tf_table LATERAL VIEW
+explode(tokenize(title, True)) t as word where not is_stopword(word);
+
+ create view term_frequency as select id, word, freq from (select id,
+tf(word) as word2freq from exploded group by id) t LATERAL VIEW explode(word2freq) t2 as word, freq;
+
+create or replace view document_frequency as select word, count(distinct id)
+docs from exploded group by word;
+
+ create or replace view tfidf as select tf.id, tf.word, tfidf(tf.freq, df.docs,
+${n_docs}) as tfidf from term_frequency tf JOIN document_frequency df ON (tf.word = df.word)
+order by tfidf desc;
+69f1
